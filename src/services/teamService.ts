@@ -152,24 +152,42 @@ export async function getConfirmedTeams(search?: string, roundId?: string, group
 export async function getAllRegistrations(statusFilter?: string): Promise<Team[]> {
   const db = getLocalDb();
   let teams = db.teams;
+  let supabasePlayers: Player[] = [];
+  let supabaseAssignments: any[] = [];
+  let supabaseRounds: Round[] = [];
+  let supabaseGroups: Group[] = [];
 
   if (isSupabaseConfigured) {
-    const { data } = await supabase.from('teams').select('*').order('created_at', { ascending: false });
-    if (data) teams = data as Team[];
+    const { data: tData } = await supabase.from('teams').select('*').order('created_at', { ascending: false });
+    const { data: pData } = await supabase.from('players').select('*');
+    const { data: aData } = await supabase.from('team_assignments').select('*');
+    const { data: rData } = await supabase.from('rounds').select('*');
+    const { data: gData } = await supabase.from('groups').select('*');
+
+    if (tData) teams = tData as Team[];
+    if (pData) supabasePlayers = pData as Player[];
+    if (aData) supabaseAssignments = aData;
+    if (rData) supabaseRounds = rData as Round[];
+    if (gData) supabaseGroups = gData as Group[];
   }
 
   if (statusFilter && statusFilter !== 'all') {
     teams = teams.filter(t => t.status === statusFilter);
   }
 
+  const allPlayers = isSupabaseConfigured && supabasePlayers.length > 0 ? supabasePlayers : db.players;
+  const allAssignments = isSupabaseConfigured && supabaseAssignments.length > 0 ? supabaseAssignments : db.assignments;
+  const allRounds = isSupabaseConfigured && supabaseRounds.length > 0 ? supabaseRounds : db.rounds;
+  const allGroups = isSupabaseConfigured && supabaseGroups.length > 0 ? supabaseGroups : db.groups;
+
   return teams.map(t => ({
     ...t,
-    players: db.players.filter(p => p.team_id === t.id),
+    players: allPlayers.filter(p => p.team_id === t.id),
     assignment: (() => {
-      const ta = db.assignments.find(a => a.team_id === t.id);
+      const ta = allAssignments.find(a => a.team_id === t.id);
       if (!ta) return undefined;
-      const round = db.rounds.find(r => r.id === ta.round_id);
-      const group = db.groups.find(g => g.id === ta.group_id);
+      const round = allRounds.find(r => r.id === ta.round_id);
+      const group = allGroups.find(g => g.id === ta.group_id);
       return {
         round_id: ta.round_id,
         group_id: ta.group_id,
@@ -495,8 +513,23 @@ export async function getRoundsAndGroups(): Promise<{ rounds: Round[]; groups: G
   if (isSupabaseConfigured) {
     const { data: rData } = await supabase.from('rounds').select('*').order('round_number', { ascending: true });
     const { data: gData } = await supabase.from('groups').select('*');
-    if (rData) rounds = rData as Round[];
-    if (gData) groups = gData as Group[];
+
+    if (rData && rData.length > 0) {
+      rounds = rData as Round[];
+    } else if (rData && rData.length === 0 && db.rounds.length > 0) {
+      await supabase.from('tournaments').upsert(db.tournament);
+      await supabase.from('rounds').upsert(db.rounds);
+      const { data: freshR } = await supabase.from('rounds').select('*').order('round_number', { ascending: true });
+      if (freshR && freshR.length > 0) rounds = freshR as Round[];
+    }
+
+    if (gData && gData.length > 0) {
+      groups = gData as Group[];
+    } else if (gData && gData.length === 0 && db.groups.length > 0) {
+      await supabase.from('groups').upsert(db.groups);
+      const { data: freshG } = await supabase.from('groups').select('*');
+      if (freshG && freshG.length > 0) groups = freshG as Group[];
+    }
   }
 
   return { rounds, groups };
@@ -516,7 +549,9 @@ export async function createRound(name: string, roundNumber: number): Promise<Ro
   saveLocalDb(db);
 
   if (isSupabaseConfigured) {
-    await supabase.from('rounds').insert(newRound);
+    await supabase.from('tournaments').upsert(db.tournament);
+    const { error } = await supabase.from('rounds').insert(newRound);
+    if (error) console.error('Error inserting round into Supabase:', error);
   }
   return newRound;
 }
@@ -555,6 +590,7 @@ export async function deleteRound(roundId: string): Promise<boolean> {
 
 export async function createGroup(roundId: string, groupName: string): Promise<Group> {
   const db = getLocalDb();
+  const round = db.rounds.find(r => r.id === roundId);
   const newGroup: Group = {
     id: generateUuid(),
     round_id: roundId,
@@ -565,7 +601,12 @@ export async function createGroup(roundId: string, groupName: string): Promise<G
   saveLocalDb(db);
 
   if (isSupabaseConfigured) {
-    await supabase.from('groups').insert(newGroup);
+    if (round) {
+      await supabase.from('tournaments').upsert(db.tournament);
+      await supabase.from('rounds').upsert(round);
+    }
+    const { error } = await supabase.from('groups').insert(newGroup);
+    if (error) console.error('Error inserting group into Supabase:', error);
   }
   return newGroup;
 }
