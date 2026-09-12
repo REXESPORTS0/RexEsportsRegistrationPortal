@@ -1,12 +1,13 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getLocalDb, saveLocalDb } from './mockStorage';
 import { AdminActivity } from '../types';
+import { generateUuid } from '../utils/codeGenerator';
 
 export async function logAdminActivity(action: string, details: Record<string, any> = {}): Promise<void> {
   const db = getLocalDb();
   const adminEmail = localStorage.getItem('REX_ADMIN_EMAIL') || 'admin@rexesports.com';
   const newActivity: AdminActivity = {
-    id: `act-${Date.now()}`,
+    id: generateUuid(),
     admin_email: adminEmail,
     action,
     details,

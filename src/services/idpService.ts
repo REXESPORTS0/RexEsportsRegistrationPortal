@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getLocalDb, saveLocalDb } from './mockStorage';
 import { IdpDocument } from '../types';
+import { generateUuid } from '../utils/codeGenerator';
 
 export async function getAllIdps(): Promise<IdpDocument[]> {
   const db = getLocalDb();
@@ -54,7 +55,7 @@ export async function uploadAndPublishIdp(
   const now = new Date().toISOString();
 
   const newIdp: IdpDocument = {
-    id: existingIdx >= 0 ? db.idps[existingIdx].id : `idp-${Date.now()}`,
+    id: existingIdx >= 0 ? db.idps[existingIdx].id : generateUuid(),
     tournament_id: '00000000-0000-0000-0000-000000000001',
     round_id: roundId,
     group_id: groupId,

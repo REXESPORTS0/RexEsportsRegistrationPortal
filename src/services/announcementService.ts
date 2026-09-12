@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getLocalDb, saveLocalDb } from './mockStorage';
 import { Announcement, AnnouncementTarget, AnnouncementPriority } from '../types';
+import { generateUuid } from '../utils/codeGenerator';
 
 export async function getAnnouncements(targetType?: string, roundId?: string, groupId?: string): Promise<Announcement[]> {
   const db = getLocalDb();
@@ -45,7 +46,7 @@ export async function createAnnouncement(data: {
   const group = data.group_id ? db.groups.find(g => g.id === data.group_id) : undefined;
 
   const newAnn: Announcement = {
-    id: `ann-${Date.now()}`,
+    id: generateUuid(),
     tournament_id: '00000000-0000-0000-0000-000000000001',
     target_type: data.target_type,
     round_id: data.round_id,

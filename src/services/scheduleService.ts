@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getLocalDb, saveLocalDb } from './mockStorage';
 import { Schedule, RoomDetail } from '../types';
+import { generateUuid } from '../utils/codeGenerator';
 
 export async function getSchedules(roundId?: string, groupId?: string): Promise<Schedule[]> {
   const db = getLocalDb();
@@ -46,7 +47,7 @@ export async function createSchedule(data: {
   const group = db.groups.find(g => g.id === data.group_id);
 
   const newSchedule: Schedule = {
-    id: `sched-${Date.now()}`,
+    id: generateUuid(),
     tournament_id: '00000000-0000-0000-0000-000000000001',
     round_id: data.round_id,
     group_id: data.group_id,
@@ -98,7 +99,7 @@ export async function publishRoomDetails(
   const now = new Date().toISOString();
 
   const newRoomDetail: RoomDetail = {
-    id: existingIdx >= 0 ? db.roomDetails[existingIdx].id : `room-${Date.now()}`,
+    id: existingIdx >= 0 ? db.roomDetails[existingIdx].id : generateUuid(),
     schedule_id: scheduleId,
     round_id: schedule.round_id,
     group_id: schedule.group_id,

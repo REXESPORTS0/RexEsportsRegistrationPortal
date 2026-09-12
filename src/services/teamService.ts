@@ -1,12 +1,12 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getLocalDb, saveLocalDb } from './mockStorage';
 import { Team, TeamRegistrationInput, Player, TeamPortalData, Round, Group, TeamAssignment, Schedule, RoomDetail, Announcement } from '../types';
-import { generateTeamCode } from '../utils/codeGenerator';
+import { generateTeamCode, generateUuid } from '../utils/codeGenerator';
 
 export async function registerTeam(input: TeamRegistrationInput): Promise<{ success: boolean; team?: Team; team_code?: string; error?: string }> {
   const teamCode = generateTeamCode('REX');
   const now = new Date().toISOString();
-  const teamId = `team-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const teamId = generateUuid();
 
   let logoUrl = 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=120&q=80';
 
@@ -42,7 +42,7 @@ export async function registerTeam(input: TeamRegistrationInput): Promise<{ succ
 
   const players: Player[] = [
     {
-      id: `player-${Date.now()}-1`,
+      id: generateUuid(),
       team_id: teamId,
       player_number: 1,
       ign: input.captain_ign.trim(),
@@ -51,7 +51,7 @@ export async function registerTeam(input: TeamRegistrationInput): Promise<{ succ
       created_at: now
     },
     ...input.players.map((p, idx) => ({
-      id: `player-${Date.now()}-${idx + 2}`,
+      id: generateUuid(),
       team_id: teamId,
       player_number: idx + 2,
       ign: p.ign.trim(),
@@ -338,7 +338,7 @@ export async function assignTeamToGroup(teamId: string, roundId: string, groupId
   const db = getLocalDb();
   const existingIdx = db.assignments.findIndex(a => a.team_id === teamId && a.round_id === roundId);
   const newAssign: TeamAssignment = {
-    id: `assign-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    id: generateUuid(),
     team_id: teamId,
     round_id: roundId,
     group_id: groupId,
@@ -380,7 +380,7 @@ export async function autoAssignTeamsToGroups(roundId: string): Promise<{ assign
       const slotNum = (groupAssignmentsCount % 20) + 1;
 
       db.assignments.push({
-        id: `assign-auto-${Date.now()}-${idx}`,
+        id: generateUuid(),
         team_id: t.id,
         round_id: roundId,
         group_id: targetGroup.id,
@@ -417,7 +417,7 @@ export async function getRoundsAndGroups(): Promise<{ rounds: Round[]; groups: G
 export async function createRound(name: string, roundNumber: number): Promise<Round> {
   const db = getLocalDb();
   const newRound: Round = {
-    id: `round-${Date.now()}`,
+    id: generateUuid(),
     tournament_id: '00000000-0000-0000-0000-000000000001',
     round_number: roundNumber,
     name,
@@ -468,7 +468,7 @@ export async function deleteRound(roundId: string): Promise<boolean> {
 export async function createGroup(roundId: string, groupName: string): Promise<Group> {
   const db = getLocalDb();
   const newGroup: Group = {
-    id: `group-${Date.now()}`,
+    id: generateUuid(),
     round_id: roundId,
     group_name: groupName,
     created_at: new Date().toISOString()

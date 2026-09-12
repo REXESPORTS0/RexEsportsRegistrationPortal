@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getLocalDb, saveLocalDb } from './mockStorage';
 import { LiveStream, StreamPlatform, StreamStatus } from '../types';
+import { generateUuid } from '../utils/codeGenerator';
 
 export async function getLiveStream(): Promise<LiveStream | null> {
   const db = getLocalDb();
@@ -51,7 +52,7 @@ export async function updateLiveStream(data: {
   const now = new Date().toISOString();
 
   const stream: LiveStream = {
-    id: db.liveStreams[0]?.id || `stream-${Date.now()}`,
+    id: db.liveStreams[0]?.id || generateUuid(),
     tournament_id: '00000000-0000-0000-0000-000000000001',
     platform: data.platform,
     stream_url: data.stream_url.trim(),
