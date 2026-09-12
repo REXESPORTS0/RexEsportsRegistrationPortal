@@ -254,9 +254,97 @@ export async function verifyTeamCode(inputCode: string): Promise<{ success: bool
   const cleanCode = inputCode.trim().toUpperCase();
 
   if (isSupabaseConfigured) {
-    const { data, error } = await supabase.rpc('verify_team_code', { input_code: cleanCode });
-    if (!error && data && data.success) {
-      return { success: true, data: data as TeamPortalData };
+    // 1. Try RPC verification
+    const { data: rpcData, error: rpcError } = await supabase.rpc('verify_team_code', { input_code: cleanCode });
+    if (!rpcError && rpcData && rpcData.success) {
+      return { success: true, data: rpcData as TeamPortalData };
+    }
+
+    // 2. Direct Supabase Query Fallback (in case RPC is missing or unconfigured)
+    const { data: teamData } = await supabase
+      .from('teams')
+      .select('*')
+      .ilike('team_code', cleanCode)
+      .maybeSingle();
+
+    if (teamData) {
+      const { data: playersData } = await supabase
+        .from('players')
+        .select('*')
+        .eq('team_id', teamData.id);
+
+      const { data: assignData } = await supabase
+        .from('team_assignments')
+        .select('*, round:rounds(*), group:groups(*)')
+        .eq('team_id', teamData.id)
+        .maybeSingle();
+
+      let idp = null;
+      let schedules: Schedule[] = [];
+      let roomDetails: RoomDetail[] = [];
+      let announcements: Announcement[] = [];
+
+      if (assignData && assignData.round_id && assignData.group_id) {
+        const { data: idpData } = await supabase
+          .from('idps')
+          .select('*')
+          .eq('round_id', assignData.round_id)
+          .eq('group_id', assignData.group_id)
+          .eq('is_published', true)
+          .maybeSingle();
+        idp = idpData;
+
+        const { data: schedData } = await supabase
+          .from('schedules')
+          .select('*')
+          .eq('round_id', assignData.round_id)
+          .eq('group_id', assignData.group_id)
+          .order('match_number', { ascending: true });
+        schedules = (schedData as Schedule[]) || [];
+
+        const { data: roomData } = await supabase
+          .from('room_details')
+          .select('*')
+          .eq('round_id', assignData.round_id)
+          .eq('group_id', assignData.group_id)
+          .eq('is_published', true);
+        roomDetails = (roomData as RoomDetail[]) || [];
+      }
+
+      const { data: annData } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('created_at', { ascending: false });
+      announcements = (annData as Announcement[]) || [];
+
+      return {
+        success: true,
+        data: {
+          team: {
+            id: teamData.id,
+            team_name: teamData.team_name,
+            logo_url: teamData.logo_url,
+            captain_name: teamData.captain_name,
+            captain_ign: teamData.captain_ign,
+            captain_uid: teamData.captain_uid,
+            status: teamData.status,
+            created_at: teamData.created_at
+          },
+          players: (playersData as Player[]) || [],
+          assignment: assignData && assignData.round && assignData.group ? {
+            round_id: assignData.round_id,
+            group_id: assignData.group_id,
+            round_name: (assignData.round as any)?.name || 'Round',
+            round_number: (assignData.round as any)?.round_number || 1,
+            group_name: (assignData.group as any)?.group_name || 'Group',
+            slot_number: assignData.slot_number || 1
+          } : null,
+          idp,
+          schedules,
+          room_details: roomDetails,
+          announcements
+        }
+      };
     }
   }
 
