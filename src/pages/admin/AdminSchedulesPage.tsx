@@ -28,7 +28,14 @@ export const AdminSchedulesPage: React.FC = () => {
     setSchedules(data);
     setRounds(rg.rounds);
     setGroups(rg.groups);
-    if (rg.rounds.length > 0 && !roundId) setRoundId(rg.rounds[0].id);
+    if (rg.rounds.length > 0) {
+      const initRound = roundId || rg.rounds[0].id;
+      setRoundId(initRound);
+      const availGroups = rg.groups.filter(g => g.round_id === initRound);
+      if (availGroups.length > 0 && !groupId) {
+        setGroupId(availGroups[0].id);
+      }
+    }
   }
 
   useEffect(() => {
@@ -37,21 +44,32 @@ export const AdminSchedulesPage: React.FC = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (roundId && groupId && matchName) {
-      await createSchedule({
-        round_id: roundId,
-        group_id: groupId,
-        match_number: Number(matchNum),
-        match_name: matchName,
-        date_time: new Date(dateTime).toISOString(),
-        map_name: mapName,
-        lobby_number: lobbyNum,
-        notes
-      });
-      await logAdminActivity('CREATED_SCHEDULE', { match_name: matchName, round_id: roundId, group_id: groupId });
-      setModalOpen(false);
-      load();
+    if (!roundId) {
+      alert('Please select a round.');
+      return;
     }
+    if (!groupId) {
+      alert('Please select a group for this round. If no group exists, create one in Groups Manager first.');
+      return;
+    }
+    if (!matchName.trim()) {
+      alert('Please enter a match name.');
+      return;
+    }
+
+    await createSchedule({
+      round_id: roundId,
+      group_id: groupId,
+      match_number: Number(matchNum),
+      match_name: matchName.trim(),
+      date_time: new Date(dateTime).toISOString(),
+      map_name: mapName,
+      lobby_number: lobbyNum,
+      notes
+    });
+    await logAdminActivity('CREATED_SCHEDULE', { match_name: matchName, round_id: roundId, group_id: groupId });
+    setModalOpen(false);
+    load();
   };
 
   const handleDelete = async (id: string) => {

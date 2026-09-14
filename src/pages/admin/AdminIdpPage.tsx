@@ -25,7 +25,14 @@ export const AdminIdpPage: React.FC = () => {
     setIdps(data);
     setRounds(rg.rounds);
     setGroups(rg.groups);
-    if (rg.rounds.length > 0 && !selectedRound) setSelectedRound(rg.rounds[0].id);
+    if (rg.rounds.length > 0) {
+      const rId = selectedRound || rg.rounds[0].id;
+      setSelectedRound(rId);
+      const availGroups = rg.groups.filter(g => g.round_id === rId);
+      if (availGroups.length > 0 && !selectedGroup) {
+        setSelectedGroup(availGroups[0].id);
+      }
+    }
   }
 
   useEffect(() => {
@@ -34,7 +41,18 @@ export const AdminIdpPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRound || !selectedGroup || !title.trim()) return;
+    if (!selectedRound) {
+      alert('Please select a round.');
+      return;
+    }
+    if (!selectedGroup) {
+      alert('Please select a group for this round. If no group exists for this round, create one in Groups Manager first!');
+      return;
+    }
+    if (!title.trim()) {
+      alert('Please enter a document title.');
+      return;
+    }
 
     setSubmitting(true);
     const res = await uploadAndPublishIdp(selectedRound, selectedGroup, title, file, externalUrl);
@@ -43,7 +61,10 @@ export const AdminIdpPage: React.FC = () => {
       setTitle('');
       setFile(null);
       setExternalUrl('');
+      alert('✅ IDP document published successfully!');
       load();
+    } else {
+      alert(`⚠️ Failed to publish IDP: ${res.error || 'Check Supabase Connection or Storage bucket settings.'}`);
     }
     setSubmitting(false);
   };
