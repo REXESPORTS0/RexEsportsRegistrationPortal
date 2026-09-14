@@ -6,15 +6,25 @@ import { generateUuid } from '../utils/codeGenerator';
 export async function getAllIdps(): Promise<IdpDocument[]> {
   const db = getLocalDb();
   let idps = db.idps;
+  let supabaseRounds: any[] = [];
+  let supabaseGroups: any[] = [];
 
   if (isSupabaseConfigured) {
-    const { data } = await supabase.from('idps').select('*').order('created_at', { ascending: false });
-    if (data) idps = data as IdpDocument[];
+    const { data: iData } = await supabase.from('idps').select('*').order('created_at', { ascending: false });
+    const { data: rData } = await supabase.from('rounds').select('*');
+    const { data: gData } = await supabase.from('groups').select('*');
+
+    if (iData) idps = iData as IdpDocument[];
+    if (rData) supabaseRounds = rData;
+    if (gData) supabaseGroups = gData;
   }
 
+  const allRounds = isSupabaseConfigured && supabaseRounds.length > 0 ? supabaseRounds : db.rounds;
+  const allGroups = isSupabaseConfigured && supabaseGroups.length > 0 ? supabaseGroups : db.groups;
+
   return idps.map(i => {
-    const round = db.rounds.find(r => r.id === i.round_id);
-    const group = db.groups.find(g => g.id === i.group_id);
+    const round = allRounds.find(r => r.id === i.round_id);
+    const group = allGroups.find(g => g.id === i.group_id);
     return {
       ...i,
       round_name: round ? round.name : 'Round',
@@ -53,9 +63,22 @@ export async function uploadAndPublishIdp(
 
   const existingIdx = db.idps.findIndex(i => i.round_id === roundId && i.group_id === groupId);
   const now = new Date().toISOString();
+  let idpId = existingIdx >= 0 ? db.idps[existingIdx].id : generateUuid();
+
+  if (isSupabaseConfigured) {
+    const { data: existingSupabaseIdp } = await supabase
+      .from('idps')
+      .select('id')
+      .eq('round_id', roundId)
+      .eq('group_id', groupId)
+      .maybeSingle();
+    if (existingSupabaseIdp) {
+      idpId = existingSupabaseIdp.id;
+    }
+  }
 
   const newIdp: IdpDocument = {
-    id: existingIdx >= 0 ? db.idps[existingIdx].id : generateUuid(),
+    id: idpId,
     tournament_id: '00000000-0000-0000-0000-000000000001',
     round_id: roundId,
     group_id: groupId,
@@ -77,7 +100,12 @@ export async function uploadAndPublishIdp(
   saveLocalDb(db);
 
   if (isSupabaseConfigured) {
-    await supabase.from('idps').upsert(newIdp);
+    await supabase.from('tournaments').upsert(db.tournament);
+    if (round) await supabase.from('rounds').upsert(round);
+    if (group) await supabase.from('groups').upsert(group);
+
+    const { error } = await supabase.from('idps').upsert(newIdp);
+    if (error) console.error('Error upserting IDP in Supabase:', error);
   }
 
   return { 

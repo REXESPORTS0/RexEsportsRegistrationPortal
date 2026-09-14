@@ -6,10 +6,20 @@ import { generateUuid } from '../utils/codeGenerator';
 export async function getSchedules(roundId?: string, groupId?: string): Promise<Schedule[]> {
   const db = getLocalDb();
   let schedules = db.schedules;
+  let supabaseRounds: any[] = [];
+  let supabaseGroups: any[] = [];
+  let supabaseRooms: any[] = [];
 
   if (isSupabaseConfigured) {
-    const { data } = await supabase.from('schedules').select('*').order('match_number', { ascending: true });
-    if (data) schedules = data as Schedule[];
+    const { data: sData } = await supabase.from('schedules').select('*').order('match_number', { ascending: true });
+    const { data: rData } = await supabase.from('rounds').select('*');
+    const { data: gData } = await supabase.from('groups').select('*');
+    const { data: roomData } = await supabase.from('room_details').select('*');
+
+    if (sData) schedules = sData as Schedule[];
+    if (rData) supabaseRounds = rData;
+    if (gData) supabaseGroups = gData;
+    if (roomData) supabaseRooms = roomData;
   }
 
   if (roundId) {
@@ -19,10 +29,14 @@ export async function getSchedules(roundId?: string, groupId?: string): Promise<
     schedules = schedules.filter(s => s.group_id === groupId);
   }
 
+  const allRounds = isSupabaseConfigured && supabaseRounds.length > 0 ? supabaseRounds : db.rounds;
+  const allGroups = isSupabaseConfigured && supabaseGroups.length > 0 ? supabaseGroups : db.groups;
+  const allRooms = isSupabaseConfigured && supabaseRooms.length > 0 ? supabaseRooms : db.roomDetails;
+
   return schedules.map(s => {
-    const round = db.rounds.find(r => r.id === s.round_id);
-    const group = db.groups.find(g => g.id === s.group_id);
-    const room = db.roomDetails.find(r => r.schedule_id === s.id);
+    const round = allRounds.find(r => r.id === s.round_id);
+    const group = allGroups.find(g => g.id === s.group_id);
+    const room = allRooms.find(r => r.schedule_id === s.id);
     return {
       ...s,
       round_name: round ? round.name : 'Round',
@@ -64,7 +78,11 @@ export async function createSchedule(data: {
   saveLocalDb(db);
 
   if (isSupabaseConfigured) {
-    await supabase.from('schedules').insert(newSchedule);
+    await supabase.from('tournaments').upsert(db.tournament);
+    if (round) await supabase.from('rounds').upsert(round);
+    if (group) await supabase.from('groups').upsert(group);
+    const { error } = await supabase.from('schedules').insert(newSchedule);
+    if (error) console.error('Error inserting schedule in Supabase:', error);
   }
 
   return {

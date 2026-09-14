@@ -443,8 +443,9 @@ export async function verifyTeamCode(inputCode: string): Promise<{ success: bool
 export async function assignTeamToGroup(teamId: string, roundId: string, groupId: string, slotNumber?: number): Promise<boolean> {
   const db = getLocalDb();
   const existingIdx = db.assignments.findIndex(a => a.team_id === teamId && a.round_id === roundId);
+  const assignId = generateUuid();
   const newAssign: TeamAssignment = {
-    id: generateUuid(),
+    id: assignId,
     team_id: teamId,
     round_id: roundId,
     group_id: groupId,
@@ -464,7 +465,20 @@ export async function assignTeamToGroup(teamId: string, roundId: string, groupId
   saveLocalDb(db);
 
   if (isSupabaseConfigured) {
-    await supabase.from('team_assignments').upsert(newAssign);
+    const { data: existingSupabaseAssign } = await supabase
+      .from('team_assignments')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('round_id', roundId)
+      .maybeSingle();
+
+    const payload: TeamAssignment = {
+      ...newAssign,
+      id: existingSupabaseAssign ? existingSupabaseAssign.id : assignId
+    };
+
+    const { error } = await supabase.from('team_assignments').upsert(payload);
+    if (error) console.error('Error in assignTeamToGroup Supabase:', error);
   }
 
   return true;
@@ -472,20 +486,32 @@ export async function assignTeamToGroup(teamId: string, roundId: string, groupId
 
 export async function autoAssignTeamsToGroups(roundId: string): Promise<{ assignedCount: number }> {
   const db = getLocalDb();
-  const roundGroups = db.groups.filter(g => g.round_id === roundId);
-  if (roundGroups.length === 0) return { assignedCount: 0 };
+  let roundGroups = db.groups.filter(g => g.round_id === roundId);
+  let approvedTeams = db.teams.filter(t => t.status === 'approved' || t.status === 'qualified');
+  let existingAssignments = db.assignments;
 
-  const approvedTeams = db.teams.filter(t => t.status === 'approved' || t.status === 'qualified');
+  if (isSupabaseConfigured) {
+    const { data: gData } = await supabase.from('groups').select('*').eq('round_id', roundId);
+    const { data: tData } = await supabase.from('teams').select('*').in('status', ['approved', 'qualified']);
+    const { data: aData } = await supabase.from('team_assignments').select('*').eq('round_id', roundId);
+
+    if (gData && gData.length > 0) roundGroups = gData as Group[];
+    if (tData) approvedTeams = tData as Team[];
+    if (aData) existingAssignments = aData as TeamAssignment[];
+  }
+
+  if (roundGroups.length === 0) return { assignedCount: 0 };
   let count = 0;
+  const newAssignmentsToInsert: TeamAssignment[] = [];
 
   approvedTeams.forEach((t, idx) => {
-    const existing = db.assignments.find(a => a.team_id === t.id && a.round_id === roundId);
+    const existing = existingAssignments.find(a => a.team_id === t.id && a.round_id === roundId);
     if (!existing) {
       const targetGroup = roundGroups[idx % roundGroups.length];
-      const groupAssignmentsCount = db.assignments.filter(a => a.round_id === roundId && a.group_id === targetGroup.id).length;
+      const groupAssignmentsCount = existingAssignments.filter(a => a.group_id === targetGroup.id).length;
       const slotNum = (groupAssignmentsCount % 20) + 1;
 
-      db.assignments.push({
+      const assignObj: TeamAssignment = {
         id: generateUuid(),
         team_id: t.id,
         round_id: roundId,
@@ -495,13 +521,22 @@ export async function autoAssignTeamsToGroups(roundId: string): Promise<{ assign
         matches_played: 0,
         status: 'active',
         created_at: new Date().toISOString()
-      });
+      };
 
+      db.assignments.push(assignObj);
+      existingAssignments.push(assignObj);
+      newAssignmentsToInsert.push(assignObj);
       count++;
     }
   });
 
   saveLocalDb(db);
+
+  if (isSupabaseConfigured && newAssignmentsToInsert.length > 0) {
+    const { error } = await supabase.from('team_assignments').insert(newAssignmentsToInsert);
+    if (error) console.error('Error in autoAssignTeamsToGroups Supabase:', error);
+  }
+
   return { assignedCount: count };
 }
 

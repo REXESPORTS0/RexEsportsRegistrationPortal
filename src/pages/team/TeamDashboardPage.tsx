@@ -12,8 +12,8 @@ export const TeamDashboardPage: React.FC = () => {
   const { teamPortalData, activeTeamCode, refreshPortalData } = useTeamAuth();
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // Subscribe to Realtime push for IDPs, Schedules, Room Details & Announcements
-  useSupabaseRealtime(['idps', 'room_details', 'schedules', 'announcements'], () => {
+  // Subscribe to Realtime push for IDPs, Schedules, Room Details, Assignments, Teams & Announcements
+  useSupabaseRealtime(['idps', 'room_details', 'schedules', 'announcements', 'team_assignments', 'teams'], () => {
     refreshPortalData();
   });
 
